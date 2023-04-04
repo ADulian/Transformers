@@ -1,5 +1,5 @@
 import torch
-import torch as nn
+import torch.nn as nn
 
 # --------------------------------------------------------------------------------
 class Transformer(nn.Module):
@@ -29,7 +29,7 @@ class Transformer(nn.Module):
         mask_trg = self.get_trg_mask(trg)
 
         enc_src = self.encoder(src, mask_src)
-        out = sefl.decoder(trg, enc_src, mask_src, mask_trg)
+        out = self.decoder(trg, enc_src, mask_src, mask_trg)
 
         return out
 
@@ -62,7 +62,7 @@ class Transformer_Block(nn.Module):
         # Mapping to higher->original space size
         self.feed_forward = nn.Sequential(nn.Linear(embed_size, forward_expansion * embed_size),
                                           nn.ReLU(),
-                                          nn.Linear(forward * embed_size, embed_size))
+                                          nn.Linear(forward_expansion * embed_size, embed_size))
 
     # --------------------------------------------------------------------------------
     def forward(self, values, keys, query, mask):
@@ -71,14 +71,14 @@ class Transformer_Block(nn.Module):
 
         # Add & Norm
         residuals = attention + query
-        residuals = self.norm1(skip_connection)
+        residuals = self.norm1(residuals)
 
         # Feed Forward
-        out = self.feed_forward(out)
+        out = self.feed_forward(residuals)
 
         # Add & Norm
         residuals = residuals + out
-        out = self.norm2(out)
+        out = self.norm2(residuals)
 
         return out
 
@@ -93,7 +93,7 @@ class Attention_Block(nn.Module):
         self.num_heads = num_heads
         self.head_dim = embed_size // num_heads
 
-        assert (self.head_dim * num_heads == embedSize), "Embedding size needs to be divisible by num of heads"
+        assert (self.head_dim * num_heads == embed_size), "Embedding size needs to be divisible by num of heads"
 
         # --- Layers
         self.linear_value = nn.Linear(self.head_dim, self.head_dim, bias=False)
@@ -108,13 +108,18 @@ class Attention_Block(nn.Module):
         # Batch Size
         N = query.shape[0]
 
-        #
+        # Shapes
         value_len, key_len, query_len = values.shape[1], keys.shape[1], query.shape[1]
 
         # Split embedding into num_heads pieces
         values = values.reshape(N, value_len, self.num_heads, self.head_dim)
         keys = keys.reshape(N, key_len, self.num_heads, self.head_dim)
-        queries = query.reshape(N, query_len_len, self.num_heads, self.head_dim)
+        queries = query.reshape(N, query_len, self.num_heads, self.head_dim)
+
+        # Send through linear layers
+        values = self.linear_value(values)
+        kets = self.linear_keys(keys)
+        queries = self.linear_query(queries)
 
         # Query * Keys
         similarity = torch.einsum("nqhd,nkhd->nhqk", [queries, keys])
@@ -130,7 +135,7 @@ class Attention_Block(nn.Module):
         out = torch.einsum("nhql,nlhd->nqhd", [attention, values])
 
         # Stack heads
-        out = out.reshape(N, query_len, self.heads*self.head_dim)
+        out = out.reshape(N, query_len, self.num_heads*self.head_dim)
 
         # Run through Lienar layer
         out = self.fc_out(out)
@@ -159,7 +164,7 @@ class Decoder_Block(nn.Module):
         query = self.norm(residuals)
 
         # 2nd Part of the decoder, the Transformer
-        out = self.transformer(value, key, query)
+        out = self.transformer(value, key, query, src_mask)
 
         return out
 
@@ -180,6 +185,7 @@ class Encoder(nn.Module):
         self.layers = nn.ModuleList(
             [
                 Transformer_Block(embed_size=embed_size, num_heads=num_heads, forward_expansion=forward_expansion)
+                for _ in range(num_layers)
             ]
         )
 
