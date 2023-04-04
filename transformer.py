@@ -3,9 +3,37 @@ import torch as nn
 
 # --------------------------------------------------------------------------------
 class Transformer(nn.Module):
+
     # --------------------------------------------------------------------------------
-    def __init__(self):
+    def __init__(self, embed_size, num_heads, forward_expansion):
         super().__init__()
+
+        self.attention = Attention(embed_size=embed_size, num_heads=num_heads)
+        self.norm1 = nn.LayerNorm(embed_size)
+        self.norm2 = nn.LayerNorm(embed_size)
+
+        # Mapping to higher->original space size
+        self.feed_forward = nn.Sequential(nn.Linear(embed_size, forward_expansion * embed_size),
+                                          nn.ReLU(),
+                                          nn.Linear(forward * embed_size, embed_size))
+
+    # --------------------------------------------------------------------------------
+    def forward(self, values, keys, query, mask):
+        # Multi-Head Attention
+        attention = self.attention(values, keys, query, mask)
+
+        # Add & Norm
+        residuals = attention + query
+        residuals = self.norm1(skip_connection)
+
+        # Feed Forward
+        out = self.feed_forward(out)
+
+        # Add & Norm
+        residuals = residuals + out
+        out = self.norm2(out)
+
+        return out
 
 # --------------------------------------------------------------------------------
 class Attention(nn.Module):
