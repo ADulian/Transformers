@@ -2,6 +2,53 @@ import torch
 import torch as nn
 
 # --------------------------------------------------------------------------------
+class Transformer(nn.Module):
+
+    # --------------------------------------------------------------------------------
+    def __init__(self, src_vocab_size, trg_vocab_size, src_pad_idx, trg_pad_idx,
+                 embed_size=256, num_layers=6, forward_expansion=4, num_heads=8,
+                 device="cuda", max_length=100):
+        super().__init__()
+
+        self.encoder = Encoder(src_vocab_size=src_vocab_size, embed_size=embed_size,
+                               num_layers=num_layers, num_heads=num_heads,
+                               device=device, forward_expansion=forward_expansion, max_length=max_length)
+
+        self.decoder = Decoder(trg_vocab_size=trg_vocab_size, embed_size=embed_size,
+                               num_layers=num_layers, num_heads=num_heads,
+                               device=device, forward_expansion=forward_expansion, max_length=max_length)
+
+        self.src_pad_idx = src_pad_idx
+        self.trg_pad_idx = trg_pad_idx
+
+        self.device = device
+
+    # --------------------------------------------------------------------------------
+    def forward(self, src, trg):
+        mask_src = self.get_src_mask(src)
+        mask_trg = self.get_trg_mask(trg)
+
+        enc_src = self.encoder(src, mask_src)
+        out = sefl.decoder(trg, enc_src, mask_src, mask_trg)
+
+        return out
+
+    # --------------------------------------------------------------------------------
+    def get_src_mask(self, src):
+        # (N, 1, 1, src_len)
+        src_mask = (src != self.src_pad_idx).unsqueeze(1).unsqueeze(2)
+
+        return src_mask.to(self.device)
+
+    # --------------------------------------------------------------------------------
+    def get_trg_mask(self, trg):
+        N, trg_len = trg.shape
+
+        trg_mask = torch.tril(torch.ones((trg_len, trg_len))).expand(N, 1, trg_len, trg_len)
+
+        return trg_mask.to(self.device)
+
+# --------------------------------------------------------------------------------
 class Transformer_Block(nn.Module):
 
     # --------------------------------------------------------------------------------
@@ -120,14 +167,14 @@ class Decoder_Block(nn.Module):
 class Encoder(nn.Module):
 
     # --------------------------------------------------------------------------------
-    def __init__(self, vocab_size, embed_size, num_layers, num_heads,
+    def __init__(self, src_vocab_size, embed_size, num_layers, num_heads,
                  device, forward_expansion, max_length):
         super().__init__()
 
         self.embed_size = embed_size
         self.device = device
 
-        self.word_embedding = nn.Embedding(vocab_size, embed_size)
+        self.word_embedding = nn.Embedding(src_vocab_size, embed_size)
         self.position_embedding = nn.Embedding(max_length, embed_size)
 
         self.layers = nn.ModuleList(
