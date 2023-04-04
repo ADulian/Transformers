@@ -90,5 +90,49 @@ class Attention(nn.Module):
 
         return out
 
+# --------------------------------------------------------------------------------
+class Encoder(nn.Module):
 
+    # --------------------------------------------------------------------------------
+    def __init__(self, vocab_size, embed_size, num_layers, num_heads,
+                 device, forward_expansion, max_length):
+        super().__init__()
+
+        self.embed_size = embed_size
+        self.device = device
+
+        self.word_embedding = nn.Embedding(vocab_size, embed_size)
+        self.position_embedding = nn.Embedding(max_length, embed_size)
+
+        self.layers = nn.ModuleList(
+            [
+                Transformer(embed_size=embed_size, num_heads=num_heads, forward_expansion=forward_expansion)
+            ]
+        )
+
+    # --------------------------------------------------------------------------------
+    def forward(self, x, mask):
+        N, seq_length = x.shape
+
+        # Input Embedding
+        emb_in = self.word_embedding(x)
+
+        # Positional Embedding
+        positions = torch.arange(0, seq_length).expand(N, seq_length).to(self.device)
+        emb_pos = self.position_embedding(positions)
+
+        # Positional Encoding
+        out = emb_in + emb_pos
+
+        for layer in self.layers:
+            out = layer(out, out, out, mask)
+
+        return out
+
+# --------------------------------------------------------------------------------
+class Decoder(nn.Module):
+
+    # --------------------------------------------------------------------------------
+    def __init__(self):
+        super().__init__()
 
