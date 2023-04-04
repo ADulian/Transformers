@@ -2,13 +2,13 @@ import torch
 import torch as nn
 
 # --------------------------------------------------------------------------------
-class Transformer(nn.Module):
+class Transformer_Block(nn.Module):
 
     # --------------------------------------------------------------------------------
     def __init__(self, embed_size, num_heads, forward_expansion):
         super().__init__()
 
-        self.attention = Attention(embed_size=embed_size, num_heads=num_heads)
+        self.attention = Attention_Block(embed_size=embed_size, num_heads=num_heads)
         self.norm1 = nn.LayerNorm(embed_size)
         self.norm2 = nn.LayerNorm(embed_size)
 
@@ -36,7 +36,7 @@ class Transformer(nn.Module):
         return out
 
 # --------------------------------------------------------------------------------
-class Attention(nn.Module):
+class Attention_Block(nn.Module):
 
     # --------------------------------------------------------------------------------
     def __init__(self, embed_size, num_heads):
@@ -91,6 +91,32 @@ class Attention(nn.Module):
         return out
 
 # --------------------------------------------------------------------------------
+class Decoder_Block(nn.Module):
+
+    # --------------------------------------------------------------------------------
+    def __init__(self, embed_size, num_heads, forward_expansion, device):
+        super().__init__()
+
+        self.attention = Attention_Block(embed_size=embed_size, num_heads=num_heads)
+        self.norm = nn.LayerNorm(embed_size)
+
+        self.transformer = Transformer_Block(embed_size=embed_size, num_heads=num_heads, forward_expansion=forward_expansion)
+
+    # --------------------------------------------------------------------------------
+    def forward(self, x, value, key, src_mask, trg_mask):
+        # Masked Multi-Head Attention
+        attention = self.attention(x, x, x, trg_mask)
+
+        # Add & Norm
+        residuals = attention + x
+        query = self.norm(residuals)
+
+        # 2nd Part of the decoder, the Transformer
+        out = self.transformer(value, key, query)
+
+        return out
+
+# --------------------------------------------------------------------------------
 class Encoder(nn.Module):
 
     # --------------------------------------------------------------------------------
@@ -106,7 +132,7 @@ class Encoder(nn.Module):
 
         self.layers = nn.ModuleList(
             [
-                Transformer(embed_size=embed_size, num_heads=num_heads, forward_expansion=forward_expansion)
+                Transformer_Block(embed_size=embed_size, num_heads=num_heads, forward_expansion=forward_expansion)
             ]
         )
 
@@ -124,6 +150,7 @@ class Encoder(nn.Module):
         # Positional Encoding
         out = emb_in + emb_pos
 
+        # Transformer
         for layer in self.layers:
             out = layer(out, out, out, mask)
 
@@ -132,7 +159,48 @@ class Encoder(nn.Module):
 # --------------------------------------------------------------------------------
 class Decoder(nn.Module):
 
-    # --------------------------------------------------------------------------------
-    def __init__(self):
+    # ----------------------------------------------------------------------------
+    def __init__(self, trg_vocab_size, embed_size, num_layers, num_heads,
+                 forward_expansion, device, max_length):
         super().__init__()
+
+        self.device = device
+
+        self.word_embedding = nn.Embedding(trg_vocab_size, embed_size)
+        self.position_embedding = nn.Embedding(max_length, embed_size)
+
+        self.layers = nn.ModuleList(
+            [
+                Decoder_Block(embed_size=embed_size, num_heads=num_heads,
+                              forward_expansion=forward_expansion, device=device)
+                for _ in range(num_layers)
+            ]
+        )
+
+        self.fc_out = nn.Linear(embed_size, trg_vocab_size)
+
+    # --------------------------------------------------------------------------------
+    def forward(self, x, enc_out, src_mask, trg_mask):
+        N, seq_length = x.shape
+
+        # Input Embedding
+        emb_in = self.word_embedding(x)
+
+        # Positional Embedding
+        positions = torch.arange(0, seq_length).expand(N, seq_length).to(self.device)
+        emb_pos = self.position_embedding(positions)
+
+        # Positional Encoding
+        out = emb_in + emb_pos
+
+        # Transformer
+        for layer in self.layers:
+            out = layer(out, enc_out, enc_out, src_mask, trg_mask)
+
+        # FC
+        out =self.fc_out(out)
+
+        return out
+
+
 
