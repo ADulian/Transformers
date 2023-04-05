@@ -118,7 +118,7 @@ class Attention_Block(nn.Module):
 
         # Send through linear layers
         values = self.linear_value(values)
-        kets = self.linear_keys(keys)
+        keys = self.linear_keys(keys)
         queries = self.linear_query(queries)
 
         # Query * Keys
